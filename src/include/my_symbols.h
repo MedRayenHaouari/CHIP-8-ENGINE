@@ -1,18 +1,5 @@
 #pragma once
 
-/* =========================================================================
- * SYMBOLS.H - UTF-8 Multi-Byte Terminal Symbols for C/C++ Command Lines
- * =========================================================================
- * 
- * Usage:
- *   printf("[" SYM_CHECK " ] Loaded successfully!\n");
- *   printf("[" SYM_CROSS " ] Operation failed.\n");
- * 
- * Note: These are multi-byte character sequences. They require a terminal
- * emulator configured to display UTF-8 text (default on almost all Linux).
- * ========================================================================= */
-
-// --- Status Icons ---
 #define SYM_CHECK            "\xE2\x9C\x94"     // ✔ (Heavy Checkmark)
 #define SYM_CHECK_LIGHT      "\xE2\x9C\x93"     // ✓ (Light Checkmark)
 #define SYM_CROSS            "\xE2\x9C\x96"     // ✖ (Heavy Cross)
@@ -24,7 +11,6 @@
 #define SYM_LOCK             "\xF0\x9F\x94\x92" // 🔒 (Padlock)
 #define SYM_KEY              "\xF0\x9F\x97\x9D" // 🗝 (Key)
 
-// --- Navigation & Arrows ---
 #define SYM_ARROW_RIGHT      "\xE2\x86\x92"     // →
 #define SYM_ARROW_LEFT       "\xE2\x86\x90"     // ←
 #define SYM_ARROW_UP         "\xE2\x86\x91"     // ↑
@@ -34,13 +20,11 @@
 #define SYM_TRIANGLE_UP      "\xE2\x96\xB2"     // ▲
 #define SYM_TRIANGLE_DOWN    "\xE2\x96\xBC"     // ▼
 
-// --- Bullets & Lists ---
 #define SYM_BULLET           "\xE2\x80\xA2"     // • (Filled Bullet)
 #define SYM_BULLET_HOLLOW    "\xE2\x97\xA6"     // ◦ (Hollow Bullet)
 #define SYM_DIAMOND          "\xE2\x97\x86"     // ◆ (Filled Diamond)
 #define SYM_SQUARE_FILLED    "\xE2\x96\xA0"     // ■ (Filled Square)
 
-// --- Box-Drawing Characters (Great for simple terminal UI borders) ---
 #define SYM_BOX_HORIZ        "\xE2\x94\x80"     // ─ (Horizontal single line)
 #define SYM_BOX_VERT         "\xE2\x94\x82"     // │ (Vertical single line)
 #define SYM_BOX_TOP_LEFT     "\xE2\x94\x8C"     // ┌ (Top Left corner)

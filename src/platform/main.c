@@ -28,19 +28,13 @@ int main(){
     return -1;
   }
   string8 rom;
-  FILE *f = fopen("../../roms/Lunar Lander (Udo Pernisz, 1979).ch8","rb");
+  FILE *f = fopen("roms/Lunar Lander (Udo Pernisz, 1979).ch8","rb");
   if (!f){    
     perror("[" COLOR_RED SYM_CROSS COLOR_RESET "] Error While Opening File\n");
     free(buffer);
     return -1;
   }
   size_t rom_size = fread(buffer,1,3584,f);
-  if (fread(buffer,1,3584,f) > 0){
-    perror("[" COLOR_RED SYM_CROSS COLOR_RESET "] Error While Reading File\n");
-    fclose(f);
-    free(buffer);
-    return -1;
-  }
   fclose(f);
   rom.size = rom_size;
   rom.data = buffer;
