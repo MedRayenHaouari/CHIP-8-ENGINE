@@ -1,5 +1,39 @@
+/*
+** ############### CHIP 8 ENGINE ###############
+**
+** NOTES:
+** - It's advised to have your chip8 object to be allocated on the heap or to reside on .data segment because
+**   it contain aligned arrays that can realign the stack and cause some bugs and also in because of it's big size
+**
+** - FAST mode is where the chip 8 logic is optimized for speed for price of memory meant for potato PCs
+** - SMALL mode in the other hand is optimized for memory for the the price of speed meant for embedded
+** - DEFAULT mode (no need to specify any flag) is optimal for code readability and it sits in between
+**
+** - CHIP8_LEGACY flag is for emulating the COSMIC CHIP 8 VIP
+** - CHIP8_MODERN flag is for emulating the modern CHIP 8 
+*/
+
+#pragma once
+
+#include <assert.h>
 #include <stddef.h>
-#include "../include/my_types.h"
+#include <stdint.h>
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef uint64_t u64;
+typedef int64_t i64;
+
+
+#if (!defined(CHIP8_LEGACY) && !defined(CHIP8_MODERN))
+# error "You have to specify whether you wanna run legacy or modern chip 8 engine, one of them"
+#elif (defined(CHIP8_LEGACY) && defined(CHIP8_MODERN))
+# error "You have to specify you either want legacy or modern chip 8 engine not both"
+#endif
 
 // max rom size = 0xFFF - 0x200
 #define MAX_ROM_SIZE 3584
@@ -18,38 +52,49 @@
 #define RAM_SIZE 4096
 
 typedef struct{
-    u8 ram[RAM_SIZE] __attribute__((aligned(8)));  // RAM slot
-    u8 vram[VRAM_SIZE] __attribute__((aligned(8))); // 1 bit per pixel for SMALL mode and u32 per pixel for FAST mode and u8 per pixel for normal mode
+    u8 ram[RAM_SIZE] __attribute__((aligned(sizeof(size_t))));  // RAM slot
+    u8 vram[VRAM_SIZE] __attribute__((aligned(sizeof(size_t)))); // 1 bit per pixel for SMALL mode and u32 per pixel for FAST mode and u8 per pixel for normal mode
+    u8 v[16] __attribute__((aligned(sizeof(size_t))));  // general pupose Vx registers
     LUT
     u16 key;  // keyboard keys with LSB at index 0
     u16 i;  // the 16bit I register
     u16 pc;  // program counter
-    u8 v[16];  // general pupose Vx registers
     u16 stack[16];  // stack
     u8 rand;  // random number
     u8 st;  // sound timer
     u8 dt;  // delay timer
     i8 sp;  // stack pointer
+    u8 waiting;
+    u8 pressed_key;
 } chip8;
 
+// string8 structure
 typedef struct{
   char *data;
   size_t size;
 } string8;
 
+#if defined(CHIP8_IMPLEMENTATION)
 int chip_init(chip8 *chip,u8 rand){
   if (chip == NULL || rand == 0) return -1;
+  
+  assert((RAM_SIZE % sizeof(size_t)) == 0 && "RAM_SIZE must be a multiple of size_t!");
+  assert((VRAM_SIZE % sizeof(size_t)) == 0 && "VRAM_SIZE must be a multiple of size_t!");
+  
   i16 i;
+  // initializing the RAM
   u16 chunck_size = RAM_SIZE/sizeof(size_t);
   size_t *chunck = (size_t*)(chip->ram);
   for (i=0;i<chunck_size;i++){
     chunck[i] = 0;
   }
+  // initializing the VRAM
   chunck_size = VRAM_SIZE/sizeof(size_t);
   chunck = (size_t*)(chip->vram);
   for (i=0;i<chunck_size;i++){
     chunck[i] = 0;
   }
+  // writing 0 to F sprites to RAM starting from @ 0
   u8 sprites[80] = {
       0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
       0x20, 0x60, 0x20, 0x20, 0x70, // 1
@@ -71,31 +116,43 @@ int chip_init(chip8 *chip,u8 rand){
   for (i=0;i<80;i++){
     chip->ram[i] = sprites[i];
   }
-  for (i=0;i<16;i++){
-    chip->v[i] = 0;
+  // initializing the Registers
+  chunck_size = 16/sizeof(size_t);
+  chunck = (size_t*)(chip->v);
+  for (i=0;i<chunck_size;i++){
+    chunck[i] = 0;
   }
-  // for the classic chip 8
+  // initializing other variables
   chip->pc = 0x200;
   chip->sp = -1;
   chip->rand = rand;
   chip->dt = 0;
   chip->st = 0;
+  chip->pressed_key = 0;
+  chip->waiting = 0;
 
   #if defined (FAST)
-  int j;
+  // initializing a look up table sothat we can figure out from a byte the 8 u32 to write to the VRAM in FAST mode
+  // for example:
+  // byte = 00000011 -> 3 in decimal
+  // we get at lut[3] 8 bytes lut[3][0] and lut[3][1] having 0xFF in them corresponding to the first 2 bits
+  // and the other have 0 corresponding to bits 3 to 8
+  i8 j;
   for (i=0;i<256;i++){
     for (j=7;j>=0;j--){
       chip->lut[i][7-j] = ((i&(1<<j))>>j)*(-1);
     }
   }
+  
+  assert(chip->lut[0x00][0] == 0x00000000 && "LUT math failed for 0-bit");
+  assert(chip->lut[0xFF][0] == 0xFFFFFFFF && "LUT math failed for 1-bit");
+  
   #endif
   
   return 0;
 }
 
 int load_rom(chip8 *chip,string8 rom){
-  // the ROM buffer read by the platform must end by an EOF
-  // only classic chip 8 mode will be eligible for now !!!
   if (chip == NULL || rom.size > MAX_ROM_SIZE) return -1;
   size_t i;
   for (i=0;i<rom.size;i++){
@@ -120,11 +177,16 @@ inline __attribute((always_inline)) u8 random_byte(u8 *seed){
 int run(chip8 *chip){
   if (chip == NULL) return -1;
   u16 inst = chip->ram[chip->pc] << 8 | chip->ram[chip->pc+1];
-  // assuming the 16bit instruction is in this format "abcd" where a containing MS4bs
+  // assuming the 16bit instruction is in this format "abcd" where a containing most segnificant 4 bits
   u8 a = inst >> 12;
   u8 b = (inst & 0x0F00) >> 8;
   u8 c = (inst & 0x00F0) >> 4;
   u8 d = inst & 0x000F;
+
+  assert(a < 16 && "Opcode nibble 'a' exceeded jump table bounds!");
+  assert(b < 16 && "Opcode nibble 'b' exceeded jump table bounds!");
+  assert(c < 16 && "Opcode nibble 'c' exceeded jump table bounds!");
+  assert(d < 16 && "Opcode nibble 'd' exceeded jump table bounds!");
   
   chip->pc += 2;
   
@@ -172,7 +234,8 @@ int run(chip8 *chip){
       }
     }
     // RET: return from a subroutine
-    if (b == 0 && c == 0xE && d == 0xE){
+    else if (b == 0 && c == 0xE && d == 0xE){
+      if (chip->sp <= -1) return -1;
       chip->pc = chip->stack[(chip->sp)--];
     }
     return 0;
@@ -184,6 +247,7 @@ int run(chip8 *chip){
   }
 
   label_2:{
+    if (chip->sp >= 16) return -1;
     chip->stack[++(chip->sp)] = chip->pc;
     goto label_1;
     return 0;
@@ -223,19 +287,24 @@ int run(chip8 *chip){
     switch (d){
       case 0:
         vx = vy;
-        chip->v[0xF] = 0;
         break;
       case 1:
         vx |= vy;
+        #if defined(CHIP8_LEGACY)
         chip->v[0xF] = 0;
+        #endif
         break;
       case 2:
         vx &= vy;
+        #if defined(CHIP8_LEGACY)
         chip->v[0xF] = 0;
+        #endif
         break;
       case 3:
         vx ^= vy;
+        #if defined(CHIP8_LEGACY)
         chip->v[0xF] = 0;
+        #endif
         break;
       case 4:
         vx += vy;
@@ -247,7 +316,9 @@ int run(chip8 *chip){
         vx = (vx - vy) & 0xFF;
         break; 
       case 6:
+        #if defined(CHIP8_LEGACY)
         vx=vy;
+        #endif
         chip->v[0xF] = vx & 0x01;
         vx = vx >> 1;
         break;
@@ -256,7 +327,9 @@ int run(chip8 *chip){
         vx = (vy - vx) & 0xFF;
         break;
       case 0xE:
+        #if defined(CHIP8_LEGACY)
         vx = vy;
+        #endif
         chip->v[0xF] = vx >> 7;
         vx = (vx << 1) & 0xFF;
         break;
@@ -278,7 +351,11 @@ int run(chip8 *chip){
   }
 
   label_B:{
+    #if defined(CHIP8_LEGACY)
     chip->pc = ((b << 8) | (c << 4) | d) + chip->v[0];
+    #elif defined(CHIP8_MODERN)
+    chip->pc = ((b << 8) | (c << 4) | d) + chip->v[b];
+    #endif
     return 0;
   }
 
@@ -288,6 +365,9 @@ int run(chip8 *chip){
     return 0;
   }
 
+  // i highly optimized it if you wanna understand it try replacing these variables with there expressions
+  // i did this substitution sothat i access memory the least amount of times
+  // same note for SMALL and DEFAULT modes
   #if defined(SMALL)
   label_D:{
     u16 a = chip->i;
@@ -303,6 +383,8 @@ int run(chip8 *chip){
     b2 = (byte+1) & 0b0111;  // %8
     u8 y1 = (y & 0b00011111) << 3; // (y%32)*8
     for (i=0;i<n;i++){
+      assert(index1 < VRAM_SIZE && "VRAM pointer out of bound in SMALL mode label D")
+      assert(index2 <= VRAM_SIZE && "VRAM pointer out of bound in SMALL mode label D")
       row = chip->ram[a++];
       z1 = ((row >> right) & 0xFF);
       z2 = ((row << left) & 0xFF);
@@ -337,6 +419,7 @@ int run(chip8 *chip){
     for (j=0;j<n;j++){
       byte = chip->ram[i];
       for (k=0;k<8;k++){
+        assert((((x+k)&63)+index_y) < VRAM_SIZE && "VRAM pointer out of bound in FAST mode label D")
         data = chip->lut[byte][k];
         collision |= array[((x+k)&63)+index_y] & data;
         array[((x+k)&63)+index_y] ^= data;
@@ -365,6 +448,7 @@ int run(chip8 *chip){
     for (j=0;j<n;j++){
       byte = chip->ram[i];
       for (k=7;k>=0;k--){
+        assert((index_x) < VRAM_SIZE && "VRAM pointer out of bound in DEFAULT mode label D")
         index_x = index_y + ((x+7-k)&63);
         data = ((-1)*((byte & (1 << k)) >> k));
         collision |= array[index_x] & data;
@@ -378,24 +462,19 @@ int run(chip8 *chip){
     }
   #endif
 
-// NOTE: this may be optimized just check Gemini to check
+  // i don't know if i have to more optimize i fear it will be unreadable and it will but is it worth it
   label_E:{
     if (c == 9 && d == 0xE){
-      if (((chip->key) & (1 << chip->v[b])) > 0){
-        chip->pc += 2;
-      }
+      chip->pc += 2*(((chip->key) & (1 << chip->v[b])) > 0);
       return 0;
     }else if (c == 0xA && d == 1){
-      if (((chip->key) & (1 << chip->v[b])) == 0){
-        chip->pc += 2;
-      }
+      chip->pc += 2*(((chip->key) & (1 << chip->v[b])) == 0);
       return 0;
     }else{
       return -1;
     }
-    }
+  }
     
-
   label_F:{
     int a;  
     u8 x = (c << 4) | d;
@@ -404,12 +483,23 @@ int run(chip8 *chip){
         chip->v[b]=chip->dt;
         break;
       case 0x0A:
-        if (chip->key == 0){
-          chip->pc -= 2;
-        }else{
-          chip->v[b] = __builtin_ctz(chip->key);
+        if (!(chip->waiting)) {
+          if (chip->key != 0) {
+            chip->pressed_key = __builtin_ctz(chip->key);
+            chip->waiting = 1;
+          }
+          chip->pc -= 2; // Keep blocking execution
+        } else {
+          // Wait for the key to be released
+          if (chip->key == 0) {
+            chip->v[b] = chip->pressed_key;
+            chip->waiting = 0;
+            // Do not subtract pc; let the chip proceed to the next instruction
+          } else {
+            chip->pc -= 2; // Key still held down, keep blocking
+          }
         }
-        break;  // the algorithme of reading the keyboard input must be slower than the execution loop to avoid missing key input
+        break;
       case 0x15:
         chip->dt = chip->v[b];
         break;
@@ -449,7 +539,9 @@ int run(chip8 *chip){
         for (int i=0;i<=b;i++){
           *(ram + i) = *(reg + i);
         }
+        #if defined(CHIP8_LEGACY)
         chip->i = a+b+1;
+        #endif
         break;
       }
       case 0x65:{
@@ -459,7 +551,9 @@ int run(chip8 *chip){
         for (int i=0;i<=b;i++){
           *(reg + i) = *(ram + i);
         }
+        #if defined(CHIP8_LEGACY)
         chip->i = a+b+1;
+        #endif
         break;
       }
       default: return -1;
@@ -484,6 +578,7 @@ int read_vram(chip8 *chip,void *pixel_buffer){
       for (k=0;k<3;k++){
         array[index_k + k] = res;
       }
+      assert((index_k + 3) < (256 * 8 * 4) && "read_vram SMALL mode buffer index out of bounds!");
       array[index_k + 3] = 0xFF;
     }
   }
@@ -513,3 +608,5 @@ int read_vram(chip8 *chip,void *pixel_buffer){
   return 0;
 }
 #endif
+
+#endif // CHIP8_IMPLEMENTATION

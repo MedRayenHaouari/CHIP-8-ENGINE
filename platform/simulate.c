@@ -29,6 +29,7 @@ void update_key_inputs(chip8 *chip) {
 }
 
 int simulate(chip8 *chip,int scale){
+  SetTraceLogLevel(LOG_NONE);
   InitWindow(64*scale,32*scale,"CHIP-8 EMULATOR");
   SetTargetFPS(TARGET_FPS);
   Color screen_pixels[64*32]={0};
@@ -44,10 +45,6 @@ int simulate(chip8 *chip,int scale){
   int i;
   
   while (!WindowShouldClose()){
-    int debug_key = GetKeyPressed();
-    if (debug_key > 0) {
-        printf("Detected Key Code: %d\n", debug_key);
-    }
     update_key_inputs(chip);
     for (i=0;i<INST_PER_FRAME;i++){
       if (run(chip) < 0){
