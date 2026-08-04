@@ -26,7 +26,7 @@ wget https://github.com/MedRayenHaouari/CHIP-8-ENGINE.git
 
 ## Getting Started
 
-### Option1. Include the Header
+### Option1:
 In one of your C source files, define the implementation macro and your configuration flags before including the header:
 
 ```c
@@ -37,14 +37,14 @@ In one of your C source files, define the implementation macro and your configur
 #include "core.h"
 ```
 
-### Option2: Compilation Flags
+### Option2:
 
-Configure your build using preprocessor definitions to tailor the engine to your target environment:
+Configure your build using preprocessor definitions to shape the engine to your target environment:
 
-* **Architecture Quirks:**
+* **Architectures:**
   * `-DCHIP8_MODERN`: Enables modern shift, bitwise, jump offset, and index register behaviors.
   * `-DCHIP8_LEGACY`: Restores legacy hardware behaviors.
-* **Performance Optimizations:**
+* **Performance Optimizations: (Optional)**
   * `-DFAST`: Enables fast rendering optimizations via pre-calculated lookup tables and more.
   * `-DSMALL`: Compacts video RAM allocation for constrained systems.
 
