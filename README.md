@@ -11,7 +11,7 @@ wget https://raw.githubusercontent.com/MedRayenHaouari/CHIP-8-ENGINE/main/core/c
 
 * **To download the whole program**
 ```bash
-wget https://github.com/MedRayenHaouari/CHIP-8-ENGINE.git
+git clone https://github.com/MedRayenHaouari/CHIP-8-ENGINE.git
 ```
 
 
